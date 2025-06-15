@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { table } from 'table';
 import { savePrice, getLatestPrice, getPriceHistory } from './db.js';
 import dotenv from 'dotenv';
+import { addDays, format, parse } from 'date-fns';
 
 // Load environment variables
 dotenv.config();
@@ -70,10 +71,43 @@ function getPriceChange(currentPrice, previousPrice) {
     return `${change > 0 ? '+' : ''}${change}€ (${change > 0 ? '+' : ''}${percentage}%)`;
 }
 
+// Function to generate date combinations
+function generateDateCombinations(departureDate, returnDate) {
+    const combinations = [];
+    
+    // Parse the input dates as MM-dd-yyyy
+    const [depMonth, depDay, depYear] = departureDate.split('-').map(Number);
+    const [retMonth, retDay, retYear] = returnDate.split('-').map(Number);
+    
+    const baseDeparture = new Date(depYear, depMonth - 1, depDay);
+    const baseReturn = new Date(retYear, retMonth - 1, retDay);
+
+    for (let i = -4; i <= 4; i++) {
+        for (let j = -4; j <= 4; j++) {
+            const newDeparture = new Date(baseDeparture);
+            newDeparture.setDate(baseDeparture.getDate() + i);
+            
+            const newReturn = new Date(baseReturn);
+            newReturn.setDate(baseReturn.getDate() + j);
+            
+            // Only add combinations where return date is after departure date
+            if (newReturn > newDeparture) {
+                combinations.push({
+                    departureDate: format(newDeparture, 'MM-dd-yyyy'),
+                    returnDate: format(newReturn, 'MM-dd-yyyy')
+                });
+            }
+        }
+    }
+    
+    return combinations;
+}
+
 async function printSummaryTable(results) {
     const tableData = [
         [
             chalk.bold('Route'),
+            chalk.bold('Dates'),
             chalk.bold('Current Price'),
             chalk.bold('Threshold'),
             chalk.bold('Change'),
@@ -82,8 +116,8 @@ async function printSummaryTable(results) {
     ];
 
     for (const result of results) {
-        const { flightConfig, price } = result;
-        const previousPrice = await getLatestPrice(flightConfig.id);
+        const { flightConfig, price, dates } = result;
+        const previousPrice = await getLatestPrice(`${flightConfig.id}-${dates.departureDate}-${dates.returnDate}`);
         const change = getPriceChange(price, previousPrice);
         const status = price < flightConfig.priceThreshold 
             ? chalk.green('Below Threshold') 
@@ -91,6 +125,7 @@ async function printSummaryTable(results) {
 
         tableData.push([
             `${flightConfig.departureCity} → ${flightConfig.destinationCity}`,
+            `${dates.departureDate} - ${dates.returnDate}`,
             `${price}€`,
             `${flightConfig.priceThreshold}€`,
             change,
@@ -101,7 +136,7 @@ async function printSummaryTable(results) {
     console.log('\n' + table(tableData));
 }
 
-async function checkFlightPrice(flightConfig) {
+async function checkFlightPrice(flightConfig, dates) {
     const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
     
@@ -134,22 +169,31 @@ async function checkFlightPrice(flightConfig) {
 
         // Fill in flight details
         await page.locator('input[placeholder="Where from?"]').click();
-        await page.keyboard.type(flightConfig.departureCity, { delay: 100 });
-        await setTimeout(1000);
+        await page.keyboard.type(flightConfig.departureCity, { delay: 0 });
+        await setTimeout(2000);
+
         await page.keyboard.press('Enter');
+        await setTimeout(100);
         await page.keyboard.press('Tab');
-        await page.keyboard.type(flightConfig.destinationCity, { delay: 100 });
-        await setTimeout(1000);
+        await setTimeout(100);
+        await page.keyboard.type(flightConfig.destinationCity, { delay: 0 });
+        await setTimeout(2000);
+
         await page.keyboard.press('Enter');
+        await setTimeout(100);
         await page.keyboard.press('Tab');
-        await page.keyboard.type(flightConfig.departureDate, { delay: 100 });
+        await setTimeout(100);
+        await page.keyboard.type(dates.departureDate, { delay: 100 });
+        await page.keyboard.press('Enter');
+        await setTimeout(100);
         await page.keyboard.press('Tab');
-        await page.keyboard.type(flightConfig.returnDate, { delay: 100 });
-        await page.keyboard.press('Tab');
-        await page.keyboard.press('Tab');
+        await setTimeout(100);
+        await page.keyboard.type(dates.returnDate, { delay: 100 });
+        await page.keyboard.press('Enter');
+        await page.keyboard.press('Enter');
 
         // Click search
-        const searchButton = await page.waitForSelector('button[aria-label="Search"]', { visible: true, timeout: 5000 });
+        const searchButton = await page.waitForSelector('button[aria-label="Search"]');
         await searchButton.click();
 
         // Wait for results and get price
@@ -159,13 +203,13 @@ async function checkFlightPrice(flightConfig) {
         const price = parseInt(priceText.replace(/[^0-9]/g, ''));
 
         // Take screenshot
-        const screenshotPath = path.join(logsDir, `flight-screenshot-${flightConfig.id}-${Date.now()}.png`);
+        const screenshotPath = path.join(logsDir, `flight-screenshot-${flightConfig.id}-${dates.departureDate}-${dates.returnDate}-${Date.now()}.png`);
         await page.screenshot({ path: screenshotPath });
 
         return { price, screenshotPath };
     } catch (error) {
         console.error(chalk.red('Error checking flight price:', error));
-        const errorScreenshotPath = path.join(logsDir, `error-screenshot-${flightConfig.id}-${Date.now()}.png`);
+        const errorScreenshotPath = path.join(logsDir, `error-screenshot-${flightConfig.id}-${dates.departureDate}-${dates.returnDate}-${Date.now()}.png`);
         await page.screenshot({ path: errorScreenshotPath });
         return null;
     } finally {
@@ -173,56 +217,69 @@ async function checkFlightPrice(flightConfig) {
     }
 }
 
-async function checkAllFlights() {
-    console.log(chalk.blue('\nStarting flight checks...'));
-    console.log(chalk.gray('----------------------------------------'));
-    
-    const results = [];
-    
-    // Run checks sequentially
-    for (const flightConfig of config.flightConfigs) {
-        const result = await checkAndNotifyFlight(flightConfig);
-        if (result) {
-            results.push(result);
-        }
-        // Add a small delay between checks to avoid overwhelming the server
-        await setTimeout(5000);
-    }
-    
-    // Print summary table
-    printSummaryTable(results);
-    
-    console.log(chalk.gray('----------------------------------------'));
-    console.log(chalk.blue('All flight checks completed'));
-}
-
 async function checkAndNotifyFlight(flightConfig) {
     try {
         console.log(chalk.cyan(`\nChecking flights for ${flightConfig.departureCity} to ${flightConfig.destinationCity}...`));
-        const result = await checkFlightPrice(flightConfig);
-        if (!result) return null;
-
-        const { price, screenshotPath } = result;
         
-        // Update price history in database
-        await savePrice(flightConfig.id, price);
-        
-        // Log the result
-        console.log(chalk.white(`\nFlight price for ${flightConfig.departureCity} to ${flightConfig.destinationCity}:`));
-        console.log(chalk.gray(`Dates: ${flightConfig.departureDate} - ${flightConfig.returnDate}`));
-        console.log(chalk.yellow(`Price: ${price}€`));
-        console.log(chalk.gray(`Screenshot saved: ${screenshotPath}`));
+        const dateCombinations = generateDateCombinations(flightConfig.departureDate, flightConfig.returnDate);
+        const results = [];
 
-        // If price is below threshold, show alert
-        if (price < flightConfig.priceThreshold) {
-            console.log(chalk.green(`\n🚨 ALERT! Price (${price}€) is below threshold (${flightConfig.priceThreshold}€)!`));
+        for (const dates of dateCombinations) {
+            console.log(chalk.gray(`Checking dates: ${dates.departureDate} - ${dates.returnDate}`));
+            const result = await checkFlightPrice(flightConfig, dates);
+            
+            if (!result) continue;
+
+            const { price, screenshotPath } = result;
+            
+            // Update price history in database with unique ID for this date combination
+            await savePrice(`${flightConfig.id}-${dates.departureDate}-${dates.returnDate}`, price);
+            
+            // Log the result
+            console.log(chalk.white(`\nFlight price for ${flightConfig.departureCity} to ${flightConfig.destinationCity}:`));
+            console.log(chalk.gray(`Dates: ${dates.departureDate} - ${dates.returnDate}`));
+            console.log(chalk.yellow(`Price: ${price}€`));
+            console.log(chalk.gray(`Screenshot saved: ${screenshotPath}`));
+
+            // If price is below threshold, show alert
+            if (price < flightConfig.priceThreshold) {
+                console.log(chalk.green(`\n🚨 ALERT! Price (${price}€) is below threshold (${flightConfig.priceThreshold}€)!`));
+            }
+
+            results.push({ flightConfig, price, dates });
+            
+            // Add a small delay between checks
+            await setTimeout(2000);
         }
 
-        return { flightConfig, price };
+        return results;
     } catch (error) {
         console.error(chalk.red(`Error checking flight ${flightConfig.id}:`, error));
         return null;
     }
+}
+
+async function checkAllFlights() {
+    console.log(chalk.blue('\nStarting flight checks...'));
+    console.log(chalk.gray('----------------------------------------'));
+    
+    const allResults = [];
+    
+    // Run checks sequentially
+    for (const flightConfig of config.flightConfigs) {
+        const results = await checkAndNotifyFlight(flightConfig);
+        if (results) {
+            allResults.push(...results);
+        }
+        // Add a small delay between flight routes
+        await setTimeout(5000);
+    }
+    
+    // Print summary table
+    printSummaryTable(allResults);
+    
+    console.log(chalk.gray('----------------------------------------'));
+    console.log(chalk.blue('All flight checks completed'));
 }
 
 // Start the checks

@@ -8,26 +8,40 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/css/style.css">
 </head>
-<body class="bg-gray-100">
-    <div class="container mx-auto px-4 py-8">
-        <h1 class="text-4xl font-bold text-center mb-8 text-gray-800">Flight Price Tracker</h1>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-12">
+        <header class="text-center mb-12">
+            <h1 class="text-5xl font-bold text-gray-900 mb-4">Flight Price Tracker</h1>
+            <p class="text-lg text-gray-600">Track and compare flight prices across different dates</p>
+        </header>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <% Object.entries(priceData).forEach(([routeId, data]) => { %>
-                <div class="bg-white rounded-lg shadow-lg p-6">
-                    <h2 class="text-2xl font-semibold mb-4 text-gray-700">
-                        <%= routeId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' → ') %>
-                    </h2>
-                    <div class="h-64">
-                        <canvas id="chart-<%= routeId %>"></canvas>
-                    </div>
-                    <div class="mt-4">
-                        <h3 class="text-lg font-medium text-gray-600">Latest Prices</h3>
-                        <div class="mt-2 space-y-2">
-                            <% data.slice(-5).reverse().forEach(record => { %>
-                                <div class="flex justify-between items-center bg-gray-50 p-2 rounded">
-                                    <span class="text-gray-600"><%= record.timestamp %></span>
-                                    <span class="font-semibold text-gray-800"><%= record.price %>€</span>
+        <div class="grid grid-cols-1 gap-8">
+            <% Object.entries(priceData).forEach(([destinationCity, routes]) => { %>
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                    <div class="p-6">
+                        <h2 class="text-3xl font-bold mb-6 text-gray-800 flex items-center">
+                            <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-lg mr-3">
+                                <%= destinationCity.charAt(0).toUpperCase() + destinationCity.slice(1) %>
+                            </span>
+                        </h2>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <% Object.entries(routes).forEach(([routeId, data]) => { %>
+                                <div class="bg-gray-50 rounded-lg p-4">
+                                    <h3 class="text-lg font-semibold text-gray-700 mb-3">
+                                        <%= routeId.split('-').slice(2).join(' / ') %>
+                                    </h3>
+                                    <div class="h-48 mb-4">
+                                        <canvas id="chart-<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>"></canvas>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <% data.slice(-3).reverse().forEach(record => { %>
+                                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm">
+                                                <span class="text-sm text-gray-600"><%= record.timestamp %></span>
+                                                <span class="font-bold text-gray-900"><%= record.price %>€</span>
+                                            </div>
+                                        <% }); %>
+                                    </div>
                                 </div>
                             <% }); %>
                         </div>
@@ -46,82 +60,77 @@
         Chart.defaults.animation.duration = 1000;
 
         // Initialize charts for each route
-        <% Object.entries(priceData).forEach(([routeId, data]) => { %>
-            const ctx<%= routeId.replace(/-/g, '') %> = document.getElementById('chart-<%= routeId %>').getContext('2d');
-            
-            // Calculate price trend
-            const prices<%= routeId.replace(/-/g, '') %> = <%- JSON.stringify(data.map(d => d.price)) %>;
-            const trend<%= routeId.replace(/-/g, '') %> = prices<%= routeId.replace(/-/g, '') %>[prices<%= routeId.replace(/-/g, '') %>.length - 1] - prices<%= routeId.replace(/-/g, '') %>[0];
-            const trendColor<%= routeId.replace(/-/g, '') %> = trend<%= routeId.replace(/-/g, '') %> > 0 ? 'rgb(239, 68, 68)' : 'rgb(34, 197, 94)';
-            
-            new Chart(ctx<%= routeId.replace(/-/g, '') %>, {
-                type: 'line',
-                data: {
-                    labels: <%- JSON.stringify(data.map(d => d.timestamp)) %>,
-                    datasets: [{
-                        label: 'Price (€)',
-                        data: prices<%= routeId.replace(/-/g, '') %>,
-                        borderColor: trendColor<%= routeId.replace(/-/g, '') %>,
-                        backgroundColor: trendColor<%= routeId.replace(/-/g, '') %> + '20',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        fill: true,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        pointBackgroundColor: trendColor<%= routeId.replace(/-/g, '') %>,
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        intersect: false,
-                        mode: 'index'
+        <% Object.entries(priceData).forEach(([destinationCity, routes]) => { %>
+            <% Object.entries(routes).forEach(([routeId, data]) => { %>
+                const ctx<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = document.getElementById('chart-<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>').getContext('2d');
+                
+                // Calculate price trend
+                const prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = <%- JSON.stringify(data.map(d => d.price)) %>;
+                const trend<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>[prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>.length - 1] - prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>[0];
+                const trendColor<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = trend<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> > 0 ? 'rgb(239, 68, 68)' : 'rgb(34, 197, 94)';
+                
+                new Chart(ctx<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>, {
+                    type: 'line',
+                    data: {
+                        labels: <%- JSON.stringify(data.map(d => d.timestamp)) %>,
+                        datasets: [{
+                            label: 'Price (€)',
+                            data: prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>,
+                            borderColor: trendColor<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>,
+                            backgroundColor: trendColor<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> + '20',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: trendColor<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>,
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }]
                     },
-                    scales: {
-                        y: {
-                            beginAtZero: false,
-                            grid: {
-                                color: 'rgba(0, 0, 0, 0.1)',
-                                drawBorder: false
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                grid: {
+                                    color: 'rgba(0, 0, 0, 0.05)',
+                                    drawBorder: false
+                                }
                             },
-                            title: {
-                                display: true,
-                                text: 'Price (€)',
-                                font: {
-                                    weight: 'bold'
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45
                                 }
                             }
                         },
-                        x: {
-                            grid: {
+                        plugins: {
+                            legend: {
                                 display: false
                             },
-                            title: {
-                                display: true,
-                                text: 'Date',
-                                font: {
-                                    weight: 'bold'
-                                }
-                            }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `Price: ${context.parsed.y}€`;
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                padding: 12,
+                                cornerRadius: 4,
+                                callbacks: {
+                                    label: function(context) {
+                                        return `Price: ${context.parsed.y}€`;
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            });
+                });
+            <% }); %>
         <% }); %>
     </script>
 </body>

@@ -2,6 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { getPriceHistory } from './db.js';
+import { initializeDatabase } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,13 +20,26 @@ app.use(express.static(join(__dirname, 'public')));
 // Routes
 app.get('/', async (req, res) => {
     try {
-        // Get price history for all routes
-        const routes = ['paris-osaka', 'paris-tokyo', 'paris-kyoto', 'paris-fukuoka'];
+        // Query the database for all unique route_ids
+        const db = await initializeDatabase();
+        const rows = await db.all('SELECT DISTINCT route_id FROM price_history');
+        await db.close();
+
+        // Group data by destination city
         const priceData = {};
         
-        for (const route of routes) {
-            const history = await getPriceHistory(route);
-            priceData[route] = history.map(record => ({
+        for (const row of rows) {
+            const routeId = row.route_id;
+            // Extract destination city from route_id (e.g., 'paris-osaka-07-12-2025-07-20-2025' -> 'osaka')
+            const destinationCity = routeId.split('-')[1];
+            
+            if (!priceData[destinationCity]) {
+                priceData[destinationCity] = {};
+            }
+
+            const history = await getPriceHistory(routeId);
+            // Store the full route_id as the key for this destination
+            priceData[destinationCity][routeId] = history.map(record => ({
                 price: record.price,
                 timestamp: new Date(record.timestamp).toLocaleString()
             }));

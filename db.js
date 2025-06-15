@@ -59,4 +59,4 @@ async function getPriceHistory(routeId) {
     return results;
 }
 
-export { savePrice, getLatestPrice, getPriceHistory }; 
+export { savePrice, getLatestPrice, getPriceHistory, initializeDatabase }; 
