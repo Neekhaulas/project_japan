@@ -7,6 +7,10 @@ import fs from 'fs';
 import chalk from 'chalk';
 import { table } from 'table';
 import { savePrice, getLatestPrice, getPriceHistory } from './db.js';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,41 +21,47 @@ if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir);
 }
 
-// Flight search configurations
-const flightConfigs = [
-    {
-        id: 'paris-osaka',
-        departureCity: 'Paris',
-        destinationCity: 'Osaka',
-        departureDate: '07-12-2025',
-        returnDate: '07-20-2025',
-        priceThreshold: 700
-    },
-    {
-        id: 'paris-tokyo',
-        departureCity: 'Paris',
-        destinationCity: 'Tokyo',
-        departureDate: '07-12-2025',
-        returnDate: '07-20-2025',
-        priceThreshold: 700
-    },
-    {
-        id: 'paris-kyoto',
-        departureCity: 'Paris',
-        destinationCity: 'Kyoto',
-        departureDate: '07-12-2025',
-        returnDate: '07-20-2025',
-        priceThreshold: 700
-    },
-    {
-        id: 'paris-fukuoka',
-        departureCity: 'Paris',
-        destinationCity: 'Fukuoka',
-        departureDate: '07-12-2025',
-        returnDate: '07-20-2025',
-        priceThreshold: 700
-    }
-];
+// Configuration
+const config = {
+    checkInterval: (process.env.CHECK_INTERVAL || 60) * 60 * 1000, // Convert minutes to milliseconds
+    flightConfigs: [
+        {
+            id: 'paris-osaka',
+            departureCity: 'Paris',
+            destinationCity: 'Osaka',
+            departureDate: '07-12-2025',
+            returnDate: '07-20-2025',
+            priceThreshold: 700
+        },
+        {
+            id: 'paris-tokyo',
+            departureCity: 'Paris',
+            destinationCity: 'Tokyo',
+            departureDate: '07-12-2025',
+            returnDate: '07-20-2025',
+            priceThreshold: 700
+        },
+        {
+            id: 'paris-kyoto',
+            departureCity: 'Paris',
+            destinationCity: 'Kyoto',
+            departureDate: '07-12-2025',
+            returnDate: '07-20-2025',
+            priceThreshold: 700
+        },
+        {
+            id: 'paris-fukuoka',
+            departureCity: 'Paris',
+            destinationCity: 'Fukuoka',
+            departureDate: '07-12-2025',
+            returnDate: '07-20-2025',
+            priceThreshold: 700
+        }
+    ]
+};
+
+// Log the configured interval
+console.log(chalk.blue(`Check interval set to ${process.env.CHECK_INTERVAL || 60} minutes`));
 
 function getPriceChange(currentPrice, previousPrice) {
     if (!previousPrice) return 'N/A';
@@ -170,7 +180,7 @@ async function checkAllFlights() {
     const results = [];
     
     // Run checks sequentially
-    for (const flightConfig of flightConfigs) {
+    for (const flightConfig of config.flightConfigs) {
         const result = await checkAndNotifyFlight(flightConfig);
         if (result) {
             results.push(result);
@@ -220,5 +230,5 @@ console.log(chalk.blue('Flight Price Checker'));
 console.log(chalk.gray('==================='));
 checkAllFlights();
 
-// Check every hour
-setInterval(checkAllFlights, 60 * 60 * 1000);
+// Check at configured interval
+setInterval(checkAllFlights, config.checkInterval);
