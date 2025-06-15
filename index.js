@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import chalk from 'chalk';
 import { table } from 'table';
+import { savePrice, getLatestPrice, getPriceHistory } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,15 +16,6 @@ const logsDir = path.join(__dirname, 'logs');
 if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir);
 }
-
-// Create history file if it doesn't exist
-const historyFile = path.join(logsDir, 'price-history.json');
-if (!fs.existsSync(historyFile)) {
-    fs.writeFileSync(historyFile, JSON.stringify({}));
-}
-
-// Load price history
-let priceHistory = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
 
 // Flight search configurations
 const flightConfigs = [
@@ -61,17 +53,6 @@ const flightConfigs = [
     }
 ];
 
-// Initialize price history for new routes
-flightConfigs.forEach(config => {
-    if (!priceHistory[config.id]) {
-        priceHistory[config.id] = [];
-    }
-});
-
-function savePriceHistory() {
-    fs.writeFileSync(historyFile, JSON.stringify(priceHistory, null, 2));
-}
-
 function getPriceChange(currentPrice, previousPrice) {
     if (!previousPrice) return 'N/A';
     const change = currentPrice - previousPrice;
@@ -79,7 +60,7 @@ function getPriceChange(currentPrice, previousPrice) {
     return `${change > 0 ? '+' : ''}${change}€ (${change > 0 ? '+' : ''}${percentage}%)`;
 }
 
-function printSummaryTable(results) {
+async function printSummaryTable(results) {
     const tableData = [
         [
             chalk.bold('Route'),
@@ -90,11 +71,9 @@ function printSummaryTable(results) {
         ]
     ];
 
-    results.forEach(result => {
+    for (const result of results) {
         const { flightConfig, price } = result;
-        const previousPrice = priceHistory[flightConfig.id].length > 0 
-            ? priceHistory[flightConfig.id][priceHistory[flightConfig.id].length - 1].price 
-            : null;
+        const previousPrice = await getLatestPrice(flightConfig.id);
         const change = getPriceChange(price, previousPrice);
         const status = price < flightConfig.priceThreshold 
             ? chalk.green('Below Threshold') 
@@ -107,7 +86,7 @@ function printSummaryTable(results) {
             change,
             status
         ]);
-    });
+    }
 
     console.log('\n' + table(tableData));
 }
@@ -215,12 +194,8 @@ async function checkAndNotifyFlight(flightConfig) {
 
         const { price, screenshotPath } = result;
         
-        // Update price history
-        priceHistory[flightConfig.id].push({
-            timestamp: new Date().toISOString(),
-            price: price
-        });
-        savePriceHistory();
+        // Update price history in database
+        await savePrice(flightConfig.id, price);
         
         // Log the result
         console.log(chalk.white(`\nFlight price for ${flightConfig.departureCity} to ${flightConfig.destinationCity}:`));
