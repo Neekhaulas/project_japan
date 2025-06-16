@@ -30,19 +30,22 @@ app.get('/', async (req, res) => {
         
         for (const row of rows) {
             const routeId = row.route_id;
-            // Extract destination city from route_id (e.g., 'paris-osaka-07-12-2025-07-20-2025' -> 'osaka')
-            const destinationCity = routeId.split('-')[1];
+            // Extract departure and destination cities from route_id (e.g., 'paris-osaka-07-12-2025-07-20-2025' -> 'paris' and 'osaka')
+            const [departureCity, destinationCity] = routeId.split('-');
             
             if (!priceData[destinationCity]) {
                 priceData[destinationCity] = {};
             }
 
             const history = await getPriceHistory(routeId);
-            // Store the full route_id as the key for this destination
-            priceData[destinationCity][routeId] = history.map(record => ({
-                price: record.price,
-                timestamp: new Date(record.timestamp).toLocaleString()
-            }));
+            // Store the full route_id as the key for this destination, including departure city
+            priceData[destinationCity][routeId] = {
+                departureCity,
+                history: history.map(record => ({
+                    price: record.price,
+                    timestamp: new Date(record.timestamp).toLocaleString()
+                }))
+            };
         }
         
         res.render('index', { priceData });

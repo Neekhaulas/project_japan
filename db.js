@@ -20,6 +20,7 @@ async function initializeDatabase() {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             route_id TEXT NOT NULL,
             price INTEGER NOT NULL,
+            screenshot BLOB,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
@@ -28,11 +29,11 @@ async function initializeDatabase() {
 }
 
 // Save price to database
-async function savePrice(routeId, price) {
+async function savePrice(routeId, price, screenshot = null) {
     const db = await initializeDatabase();
     await db.run(
-        'INSERT INTO price_history (route_id, price) VALUES (?, ?)',
-        [routeId, price]
+        'INSERT INTO price_history (route_id, price, screenshot) VALUES (?, ?, ?)',
+        [routeId, price, screenshot]
     );
     await db.close();
 }

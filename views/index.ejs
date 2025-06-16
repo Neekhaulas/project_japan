@@ -7,6 +7,24 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .cheapest-route {
+            border: 3px solid #10B981;
+            position: relative;
+        }
+        .cheapest-route::before {
+            content: "Best Deal";
+            position: absolute;
+            top: -12px;
+            right: 10px;
+            background: #10B981;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <div class="container mx-auto px-4 py-12">
@@ -18,34 +36,89 @@
         <div class="grid grid-cols-1 gap-8">
             <% Object.entries(priceData).forEach(([destinationCity, routes]) => { %>
                 <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                    <div class="p-6">
-                        <h2 class="text-3xl font-bold mb-6 text-gray-800 flex items-center">
-                            <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-lg mr-3">
-                                <%= destinationCity.charAt(0).toUpperCase() + destinationCity.slice(1) %>
-                            </span>
-                        </h2>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            <% Object.entries(routes).forEach(([routeId, data]) => { %>
-                                <div class="bg-gray-50 rounded-lg p-4">
-                                    <h3 class="text-lg font-semibold text-gray-700 mb-3">
-                                        <%= routeId.split('-').slice(2).join(' / ') %>
-                                    </h3>
-                                    <div class="h-48 mb-4">
-                                        <canvas id="chart-<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>"></canvas>
-                                    </div>
-                                    <div class="space-y-2">
-                                        <% data.slice(-3).reverse().forEach(record => { %>
-                                            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm">
-                                                <span class="text-sm text-gray-600"><%= record.timestamp %></span>
-                                                <span class="font-bold text-gray-900"><%= record.price %>€</span>
-                                            </div>
-                                        <% }); %>
-                                    </div>
+                    <details class="group [&>summary::-webkit-details-marker]:hidden">
+                        <summary class="p-6 cursor-pointer list-none">
+                            <div class="flex items-center justify-between">
+                                <h2 class="text-3xl font-bold text-gray-800 flex items-center">
+                                    <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-lg mr-3">
+                                        <%= destinationCity.charAt(0).toUpperCase() + destinationCity.slice(1) %>
+                                    </span>
+                                </h2>
+                                <div class="flex items-center">
+                                    <span class="text-lg font-semibold text-gray-600 mr-2">Lowest Price:</span>
+                                    <span class="text-2xl font-bold text-green-600">
+                                        <% 
+                                        const prices = Object.values(routes).map(route => 
+                                            route && route.history && route.history.length > 0 ? route.history[route.history.length - 1].price : null
+                                        ).filter(price => price !== null);
+                                        if (prices.length > 0) {
+                                            const lowestPrice = Math.min(...prices);
+                                            if (lowestPrice !== Infinity) {
+                                                %><%= lowestPrice %>€<%
+                                            } else {
+                                                %>No data available<%
+                                            }
+                                        } else {
+                                            %>No data available<%
+                                        }
+                                        %>
+                                    </span>
+                                    <svg class="w-6 h-6 ml-2 transform group-open:rotate-180 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
                                 </div>
-                            <% }); %>
+                            </div>
+                        </summary>
+                        <div class="p-6 pt-0">
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <% 
+                                // Find the cheapest route and sort routes by current price
+                                let cheapestRoute = null;
+                                let lowestPrice = Infinity;
+                                
+                                // Convert routes to array and sort by current price
+                                const sortedRoutes = Object.entries(routes).sort(([routeIdA, dataA], [routeIdB, dataB]) => {
+                                    const currentPriceA = dataA && dataA.history && dataA.history.length > 0 ? dataA.history[dataA.history.length - 1].price : Infinity;  // Most recent price
+                                    const currentPriceB = dataB && dataB.history && dataB.history.length > 0 ? dataB.history[dataB.history.length - 1].price : Infinity;  // Most recent price
+                                    
+                                    // Update cheapest route while sorting
+                                    if (currentPriceA < lowestPrice) {
+                                        lowestPrice = currentPriceA;
+                                        cheapestRoute = routeIdA;
+                                    }
+                                    if (currentPriceB < lowestPrice) {
+                                        lowestPrice = currentPriceB;
+                                        cheapestRoute = routeIdB;
+                                    }
+                                    
+                                    return currentPriceA - currentPriceB;
+                                });
+                                %>
+                                <% sortedRoutes.forEach(([routeId, data]) => { %>
+                                    <div class="bg-gray-50 rounded-lg p-4 <%= routeId === cheapestRoute ? 'cheapest-route' : '' %>">
+                                        <h3 class="text-lg font-semibold text-gray-700 mb-3">
+                                            <%= routeId.split('-')[0].charAt(0).toUpperCase() + routeId.split('-')[0].slice(1) %> → <%= destinationCity.charAt(0).toUpperCase() + destinationCity.slice(1) %>
+                                            <br>
+                                            <span class="text-sm text-gray-500">
+                                                <%= routeId.split('-').slice(2, 5).join(' / ') %> → <%= routeId.split('-').slice(5).join(' / ') %>
+                                            </span>
+                                        </h3>
+                                        <div class="h-48 mb-4">
+                                            <canvas id="chart-<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>"></canvas>
+                                        </div>
+                                        <div class="space-y-2">
+                                            <% (Array.isArray(data.history) ? data.history.slice(-3).reverse() : []).forEach(record => { %>
+                                                <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm">
+                                                    <span class="text-sm text-gray-600"><%= record.timestamp %></span>
+                                                    <span class="font-bold text-gray-900"><%= record.price %>€</span>
+                                                </div>
+                                            <% }); %>
+                                        </div>
+                                    </div>
+                                <% }); %>
+                            </div>
                         </div>
-                    </div>
+                    </details>
                 </div>
             <% }); %>
         </div>
@@ -65,25 +138,47 @@
                 const ctx<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = document.getElementById('chart-<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>').getContext('2d');
                 
                 // Calculate price trend
-                const prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = <%- JSON.stringify(data.map(d => d.price)) %>;
-                const trend<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>[prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>.length - 1] - prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>[0];
-                const trendColor<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = trend<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> > 0 ? 'rgb(239, 68, 68)' : 'rgb(34, 197, 94)';
+                const prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = <%- JSON.stringify(Array.isArray(data.history) ? data.history.map(d => d.price) : []) %>;
+                const trend<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>.length > 0 ? 
+                    prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>[prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>.length - 1] - prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>[0] : 0;
+                
+                // Define color scheme
+                const colors<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> = {
+                    primary: 'rgb(59, 130, 246)', // Blue
+                    secondary: 'rgb(99, 102, 241)', // Indigo
+                    success: 'rgb(34, 197, 94)', // Green
+                    danger: 'rgb(239, 68, 68)', // Red
+                    gradient: {
+                        start: 'rgba(59, 130, 246, 0.2)',
+                        end: 'rgba(99, 102, 241, 0.1)'
+                    }
+                };
                 
                 new Chart(ctx<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>, {
                     type: 'line',
                     data: {
-                        labels: <%- JSON.stringify(data.map(d => d.timestamp)) %>,
+                        labels: <%- JSON.stringify(Array.isArray(data.history) ? data.history.map(d => d.timestamp) : []) %>,
                         datasets: [{
                             label: 'Price (€)',
                             data: prices<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>,
-                            borderColor: trendColor<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>,
-                            backgroundColor: trendColor<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %> + '20',
+                            borderColor: colors<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>.primary,
+                            backgroundColor: function(context) {
+                                const chart = context.chart;
+                                const {ctx, chartArea} = chart;
+                                if (!chartArea) {
+                                    return null;
+                                }
+                                const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+                                gradient.addColorStop(0, colors<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>.gradient.start);
+                                gradient.addColorStop(1, colors<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>.gradient.end);
+                                return gradient;
+                            },
                             borderWidth: 2,
                             tension: 0.4,
                             fill: true,
                             pointRadius: 4,
                             pointHoverRadius: 6,
-                            pointBackgroundColor: trendColor<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>,
+                            pointBackgroundColor: colors<%= routeId.replace(/[^a-zA-Z0-9]/g, '') %>.primary,
                             pointBorderColor: '#fff',
                             pointBorderWidth: 2
                         }]

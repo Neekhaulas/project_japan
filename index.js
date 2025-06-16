@@ -136,14 +136,17 @@ async function printSummaryTable(results) {
     console.log('\n' + table(tableData));
 }
 
-async function checkFlightPrice(flightConfig, dates) {
+async function checkFlightPrice(flightConfig, dates, retryCount = 0) {
+    const MAX_RETRIES = 3;
+    const INITIAL_RETRY_DELAY = 2000; // 2 seconds
+
     const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
     
     try {
         // Navigate to Google Flights
         await page.goto('https://www.google.com/travel/flights?gl=US&hl=en-US');
-        await page.setViewport({ width: 1400, height: 900 });
+        await page.setViewport({ width: 1400, height: 2500 });
 
         // Handle cookie consent
         try {
@@ -202,15 +205,25 @@ async function checkFlightPrice(flightConfig, dates) {
         const priceText = await firstPrice.evaluate(el => el.textContent);
         const price = parseInt(priceText.replace(/[^0-9]/g, ''));
 
-        // Take screenshot
-        const screenshotPath = path.join(logsDir, `flight-screenshot-${flightConfig.id}-${dates.departureDate}-${dates.returnDate}-${Date.now()}.png`);
-        await page.screenshot({ path: screenshotPath });
+        // Take screenshot after getting the price
+        const screenshot = await page.screenshot({ encoding: 'binary' });
 
-        return { price, screenshotPath };
+        return { price, screenshot };
     } catch (error) {
-        console.error(chalk.red('Error checking flight price:', error));
-        const errorScreenshotPath = path.join(logsDir, `error-screenshot-${flightConfig.id}-${dates.departureDate}-${dates.returnDate}-${Date.now()}.png`);
-        await page.screenshot({ path: errorScreenshotPath });
+        console.error(chalk.red(`Error checking flight price (attempt ${retryCount + 1}/${MAX_RETRIES + 1}):`, error.message));
+        
+        // Close the browser before retrying
+        await browser.close();
+
+        // Implement retry logic with exponential backoff
+        if (retryCount < MAX_RETRIES) {
+            const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+            console.log(chalk.yellow(`Retrying in ${delay/1000} seconds...`));
+            await setTimeout(delay);
+            return checkFlightPrice(flightConfig, dates, retryCount + 1);
+        }
+
+        console.error(chalk.red(`Failed to check price after ${MAX_RETRIES + 1} attempts`));
         return null;
     } finally {
         await browser.close();
@@ -224,32 +237,45 @@ async function checkAndNotifyFlight(flightConfig) {
         const dateCombinations = generateDateCombinations(flightConfig.departureDate, flightConfig.returnDate);
         const results = [];
 
-        for (const dates of dateCombinations) {
-            console.log(chalk.gray(`Checking dates: ${dates.departureDate} - ${dates.returnDate}`));
-            const result = await checkFlightPrice(flightConfig, dates);
-            
-            if (!result) continue;
+        // Process date combinations in parallel with a concurrency limit
+        const DATE_CONCURRENCY_LIMIT = 5; // Limit concurrent date checks per flight config
+        
+        for (let i = 0; i < dateCombinations.length; i += DATE_CONCURRENCY_LIMIT) {
+            const dateBatch = dateCombinations.slice(i, i + DATE_CONCURRENCY_LIMIT);
+            const batchResults = await Promise.all(
+                dateBatch.map(async (dates) => {
+                    console.log(chalk.gray(`Checking dates: ${dates.departureDate} - ${dates.returnDate}`));
+                    const result = await checkFlightPrice(flightConfig, dates);
+                    
+                    if (!result) return null;
 
-            const { price, screenshotPath } = result;
-            
-            // Update price history in database with unique ID for this date combination
-            await savePrice(`${flightConfig.id}-${dates.departureDate}-${dates.returnDate}`, price);
-            
-            // Log the result
-            console.log(chalk.white(`\nFlight price for ${flightConfig.departureCity} to ${flightConfig.destinationCity}:`));
-            console.log(chalk.gray(`Dates: ${dates.departureDate} - ${dates.returnDate}`));
-            console.log(chalk.yellow(`Price: ${price}€`));
-            console.log(chalk.gray(`Screenshot saved: ${screenshotPath}`));
+                    const { price, screenshot } = result;
+                    
+                    // Update price history in database with unique ID for this date combination
+                    await savePrice(`${flightConfig.id}-${dates.departureDate}-${dates.returnDate}`, price, screenshot);
+                    
+                    // Log the result
+                    console.log(chalk.white(`\nFlight price for ${flightConfig.departureCity} to ${flightConfig.destinationCity}:`));
+                    console.log(chalk.gray(`Dates: ${dates.departureDate} - ${dates.returnDate}`));
+                    console.log(chalk.yellow(`Price: ${price}€`));
 
-            // If price is below threshold, show alert
-            if (price < flightConfig.priceThreshold) {
-                console.log(chalk.green(`\n🚨 ALERT! Price (${price}€) is below threshold (${flightConfig.priceThreshold}€)!`));
+                    // If price is below threshold, show alert
+                    if (price < flightConfig.priceThreshold) {
+                        console.log(chalk.green(`\n🚨 ALERT! Price (${price}€) is below threshold (${flightConfig.priceThreshold}€)!`));
+                    }
+
+                    return { flightConfig, price, dates };
+                })
+            );
+            
+            // Filter out null results and add to results array
+            const validResults = batchResults.filter(result => result !== null);
+            results.push(...validResults);
+            
+            // Add a small delay between date batches to avoid rate limiting
+            if (i + DATE_CONCURRENCY_LIMIT < dateCombinations.length) {
+                await setTimeout(1000);
             }
-
-            results.push({ flightConfig, price, dates });
-            
-            // Add a small delay between checks
-            await setTimeout(2000);
         }
 
         return results;
@@ -264,15 +290,26 @@ async function checkAllFlights() {
     console.log(chalk.gray('----------------------------------------'));
     
     const allResults = [];
+    const CONCURRENCY_LIMIT = 10; // Limit concurrent browser instances
     
-    // Run checks sequentially
-    for (const flightConfig of config.flightConfigs) {
-        const results = await checkAndNotifyFlight(flightConfig);
-        if (results) {
-            allResults.push(...results);
+    // Process flight configs in batches to limit concurrency
+    for (let i = 0; i < config.flightConfigs.length; i += CONCURRENCY_LIMIT) {
+        const batch = config.flightConfigs.slice(i, i + CONCURRENCY_LIMIT);
+        const batchResults = await Promise.all(
+            batch.map(flightConfig => checkAndNotifyFlight(flightConfig))
+        );
+        
+        // Filter out null results and flatten the array
+        const validResults = batchResults
+            .filter(results => results !== null)
+            .flat();
+            
+        allResults.push(...validResults);
+        
+        // Add a small delay between batches to avoid rate limiting
+        if (i + CONCURRENCY_LIMIT < config.flightConfigs.length) {
+            await setTimeout(5000);
         }
-        // Add a small delay between flight routes
-        await setTimeout(5000);
     }
     
     // Print summary table
