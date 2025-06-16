@@ -9,6 +9,31 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/css/style.css">
     <script>
+        // Request notification permission
+        if ('Notification' in window) {
+            Notification.requestPermission();
+        }
+
+        // Show browser notification if permission is granted
+        function showBrowserNotification(title, message) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(title, {
+                    body: message,
+                    icon: '/favicon.ico'
+                });
+            }
+        }
+
+        // Trigger notifications on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            <% if (notifications && notifications.length > 0) { %>
+                showBrowserNotification(
+                    'Flight Price Alerts',
+                    'You have <%= notifications.length %> new price alert<%= notifications.length > 1 ? "s" : "" %>!'
+                );
+            <% } %>
+        });
+
         // Auto refresh the page every minute
         setTimeout(function() {
             window.location.reload();
@@ -31,12 +56,88 @@
             font-size: 12px;
             font-weight: bold;
         }
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #EF4444;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .notification-panel {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            width: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            z-index: 50;
+        }
+        .notification-panel.show {
+            display: block;
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <div class="container mx-auto px-4 py-12">
-        <header class="text-center mb-12">
-            <h1 class="text-5xl font-bold text-gray-900 mb-4">Flight Price Tracker</h1>
+        <header class="text-center mb-12 relative">
+            <div class="flex justify-between items-center mb-4">
+                <h1 class="text-5xl font-bold text-gray-900">Flight Price Tracker</h1>
+                <div class="relative">
+                    <button id="notificationBell" class="p-2 rounded-full hover:bg-gray-100 focus:outline-none">
+                        <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        <% if (notifications && notifications.length > 0) { %>
+                            <span class="notification-badge"><%= notifications.length %></span>
+                        <% } %>
+                    </button>
+                    <div id="notificationPanel" class="notification-panel">
+                        <div class="p-4 border-b flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-gray-900">Notifications</h3>
+                            <% if (notifications && notifications.length > 0) { %>
+                                <button onclick="clearAllNotifications()" class="text-sm text-red-600 hover:text-red-800 font-medium">
+                                    Clear All
+                                </button>
+                            <% } %>
+                        </div>
+                        <div class="divide-y">
+                            <% if (notifications && notifications.length > 0) { %>
+                                <% notifications.forEach(notification => { %>
+                                    <div class="p-4 hover:bg-gray-50" data-notification-id="<%= notification.id %>">
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <p class="text-sm text-gray-900"><%= notification.message %></p>
+                                                <p class="text-xs text-gray-500 mt-1"><%= new Date(notification.timestamp).toLocaleString() %></p>
+                                            </div>
+                                            <button class="text-gray-400 hover:text-gray-600" onclick="markAsRead(<%= notification.id %>)">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                <% }); %>
+                            <% } else { %>
+                                <div class="p-4 text-center text-gray-500">
+                                    No new notifications
+                                </div>
+                            <% } %>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <p class="text-lg text-gray-600">Track and compare flight prices across different dates</p>
         </header>
         
@@ -234,6 +335,75 @@
                 });
             <% }); %>
         <% }); %>
+
+        // Notification panel toggle
+        const notificationBell = document.getElementById('notificationBell');
+        const notificationPanel = document.getElementById('notificationPanel');
+
+        notificationBell.addEventListener('click', () => {
+            notificationPanel.classList.toggle('show');
+        });
+
+        // Close notification panel when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!notificationBell.contains(e.target) && !notificationPanel.contains(e.target)) {
+                notificationPanel.classList.remove('show');
+            }
+        });
+
+        // Mark notification as read
+        async function markAsRead(notificationId) {
+            try {
+                const response = await fetch(`/api/notifications/${notificationId}/read`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    const notification = document.querySelector(`[data-notification-id="${notificationId}"]`);
+                    if (notification) {
+                        notification.remove();
+                    }
+                    // Update notification badge
+                    const badge = document.querySelector('.notification-badge');
+                    if (badge) {
+                        const count = parseInt(badge.textContent) - 1;
+                        if (count > 0) {
+                            badge.textContent = count;
+                        } else {
+                            badge.remove();
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error marking notification as read:', error);
+            }
+        }
+
+        // Clear all notifications
+        async function clearAllNotifications() {
+            try {
+                const response = await fetch('/api/notifications/clear-all', {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    // Remove all notifications from the panel
+                    const notificationPanel = document.getElementById('notificationPanel');
+                    const notificationsContainer = notificationPanel.querySelector('.divide-y');
+                    notificationsContainer.innerHTML = `
+                        <div class="p-4 text-center text-gray-500">
+                            No new notifications
+                        </div>
+                    `;
+                    
+                    // Remove notification badge
+                    const badge = document.querySelector('.notification-badge');
+                    if (badge) {
+                        badge.remove();
+                    }
+                }
+            } catch (error) {
+                console.error('Error clearing all notifications:', error);
+            }
+        }
     </script>
 </body>
 </html> 

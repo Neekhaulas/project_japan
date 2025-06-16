@@ -1,7 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { getPriceHistory } from './db.js';
+import { getPriceHistory, getUnreadNotifications, markNotificationAsRead, markAllNotificationsAsRead } from './db.js';
 import { initializeDatabase } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,6 +24,9 @@ app.get('/', async (req, res) => {
         const db = await initializeDatabase();
         const rows = await db.all('SELECT DISTINCT route_id FROM price_history');
         await db.close();
+
+        // Get unread notifications
+        const notifications = await getUnreadNotifications();
 
         // Group data by destination city
         const priceData = {};
@@ -48,7 +51,7 @@ app.get('/', async (req, res) => {
             };
         }
         
-        res.render('index', { priceData });
+        res.render('index', { priceData, notifications });
     } catch (error) {
         console.error('Error fetching price data:', error);
         res.status(500).send('Error fetching price data');
@@ -66,6 +69,28 @@ app.get('/api/prices/:routeId', async (req, res) => {
     }
 });
 
+// API endpoint for marking notification as read
+app.post('/api/notifications/:id/read', async (req, res) => {
+    try {
+        await markNotificationAsRead(req.params.id);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error marking notification as read:', error);
+        res.status(500).json({ error: 'Error marking notification as read' });
+    }
+});
+
+// API endpoint for marking all notifications as read
+app.post('/api/notifications/clear-all', async (req, res) => {
+    try {
+        await markAllNotificationsAsRead();
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error clearing all notifications:', error);
+        res.status(500).json({ error: 'Error clearing all notifications' });
+    }
+});
+
 app.listen(port, () => {
-    console.log(`Web interface available at http://localhost:${port}`);
+    console.log(`Server is running on port ${port}`);
 }); 

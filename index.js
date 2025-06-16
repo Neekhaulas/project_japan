@@ -6,7 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import chalk from 'chalk';
 import { table } from 'table';
-import { savePrice, getLatestPrice, getPriceHistory } from './db.js';
+import { savePrice, getLatestPrice, getPriceHistory, saveNotification } from './db.js';
 import dotenv from 'dotenv';
 import { addDays, format, parse } from 'date-fns';
 
@@ -249,16 +249,26 @@ async function checkAndNotifyFlight(flightConfig) {
                     const { price } = result;
                     
                     // Update price history in database with unique ID for this date combination
-                    await savePrice(`${flightConfig.id}-${dates.departureDate}-${dates.returnDate}`, price);
+                    const routeId = `${flightConfig.id}-${dates.departureDate}-${dates.returnDate}`;
+                    await savePrice(routeId, price);
                     
                     // Log the result
                     console.log(chalk.white(`\nFlight price for ${flightConfig.departureCity} to ${flightConfig.destinationCity}:`));
                     console.log(chalk.gray(`Dates: ${dates.departureDate} - ${dates.returnDate}`));
                     console.log(chalk.yellow(`Price: ${price}€`));
 
-                    // If price is below threshold, show alert
+                    // If price is below threshold, create notification
                     if (price < flightConfig.priceThreshold) {
-                        console.log(chalk.green(`\n🚨 ALERT! Price (${price}€) is below threshold (${flightConfig.priceThreshold}€)!`));
+                        const message = `🚨 Price Alert! Flight from ${flightConfig.departureCity} to ${flightConfig.destinationCity} (${dates.departureDate} - ${dates.returnDate}) is now ${price}€ (below threshold of ${flightConfig.priceThreshold}€)`;
+                        console.log(chalk.green(`\n${message}`));
+                        
+                        // Save notification to database
+                        await saveNotification(
+                            routeId,
+                            price,
+                            flightConfig.priceThreshold,
+                            message
+                        );
                     }
 
                     return { flightConfig, price, dates };

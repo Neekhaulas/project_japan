@@ -25,6 +25,19 @@ async function initializeDatabase() {
         )
     `);
 
+    // Create notifications table if it doesn't exist
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            route_id TEXT NOT NULL,
+            price INTEGER NOT NULL,
+            threshold INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            is_read BOOLEAN DEFAULT 0,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
     return db;
 }
 
@@ -60,4 +73,50 @@ async function getPriceHistory(routeId) {
     return results;
 }
 
-export { savePrice, getLatestPrice, getPriceHistory, initializeDatabase }; 
+// Save notification to database
+async function saveNotification(routeId, price, threshold, message) {
+    const db = await initializeDatabase();
+    await db.run(
+        'INSERT INTO notifications (route_id, price, threshold, message) VALUES (?, ?, ?, ?)',
+        [routeId, price, threshold, message]
+    );
+    await db.close();
+}
+
+// Get unread notifications
+async function getUnreadNotifications() {
+    const db = await initializeDatabase();
+    const results = await db.all(
+        'SELECT * FROM notifications WHERE is_read = 0 ORDER BY timestamp DESC'
+    );
+    await db.close();
+    return results;
+}
+
+// Mark notification as read
+async function markNotificationAsRead(notificationId) {
+    const db = await initializeDatabase();
+    await db.run(
+        'UPDATE notifications SET is_read = 1 WHERE id = ?',
+        [notificationId]
+    );
+    await db.close();
+}
+
+// Mark all notifications as read
+async function markAllNotificationsAsRead() {
+    const db = await initializeDatabase();
+    await db.run('UPDATE notifications SET is_read = 1 WHERE is_read = 0');
+    await db.close();
+}
+
+export { 
+    savePrice, 
+    getLatestPrice, 
+    getPriceHistory, 
+    initializeDatabase,
+    saveNotification,
+    getUnreadNotifications,
+    markNotificationAsRead,
+    markAllNotificationsAsRead
+}; 
