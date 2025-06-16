@@ -4,11 +4,49 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="60">
-    <title>Flight Price Tracker</title>
+    <title><% if (notifications && notifications.length > 0) { %>(<%= notifications.length %>) <% } %>Flight Price Tracker</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/css/style.css">
     <script>
+        // Update favicon with notification count
+        function updateFavicon(count) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+
+            // Draw background circle
+            ctx.beginPath();
+            ctx.arc(16, 16, 16, 0, 2 * Math.PI);
+            ctx.fillStyle = count > 0 ? '#EF4444' : '#6B7280'; // Red if notifications, gray if none
+            ctx.fill();
+
+            if (count > 0) {
+                // Draw number
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                // If count is more than 99, show 99+
+                const text = count > 99 ? '99+' : count.toString();
+                ctx.fillText(text, 16, 16);
+            }
+
+            // Update favicon
+            const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+            link.type = 'image/x-icon';
+            link.rel = 'shortcut icon';
+            link.href = canvas.toDataURL();
+            document.getElementsByTagName('head')[0].appendChild(link);
+        }
+
+        // Update page title when notifications change
+        function updatePageTitle(count) {
+            document.title = count > 0 ? `(${count}) Flight Price Tracker` : 'Flight Price Tracker';
+            updateFavicon(count);
+        }
+
         // Request notification permission
         if ('Notification' in window) {
             Notification.requestPermission();
@@ -32,6 +70,8 @@
                     'You have <%= notifications.length %> new price alert<%= notifications.length > 1 ? "s" : "" %>!'
                 );
             <% } %>
+            // Initialize favicon
+            updateFavicon(<%= notifications ? notifications.length : 0 %>);
         });
 
         // Auto refresh the page every minute
@@ -351,33 +391,6 @@
             }
         });
 
-        // Mark notification as read
-        async function markAsRead(notificationId) {
-            try {
-                const response = await fetch(`/api/notifications/${notificationId}/read`, {
-                    method: 'POST'
-                });
-                if (response.ok) {
-                    const notification = document.querySelector(`[data-notification-id="${notificationId}"]`);
-                    if (notification) {
-                        notification.remove();
-                    }
-                    // Update notification badge
-                    const badge = document.querySelector('.notification-badge');
-                    if (badge) {
-                        const count = parseInt(badge.textContent) - 1;
-                        if (count > 0) {
-                            badge.textContent = count;
-                        } else {
-                            badge.remove();
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error('Error marking notification as read:', error);
-            }
-        }
-
         // Clear all notifications
         async function clearAllNotifications() {
             try {
@@ -399,9 +412,41 @@
                     if (badge) {
                         badge.remove();
                     }
+
+                    // Update page title
+                    updatePageTitle(0);
                 }
             } catch (error) {
                 console.error('Error clearing all notifications:', error);
+            }
+        }
+
+        // Mark notification as read
+        async function markAsRead(notificationId) {
+            try {
+                const response = await fetch(`/api/notifications/${notificationId}/read`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    const notification = document.querySelector(`[data-notification-id="${notificationId}"]`);
+                    if (notification) {
+                        notification.remove();
+                    }
+                    // Update notification badge
+                    const badge = document.querySelector('.notification-badge');
+                    if (badge) {
+                        const count = parseInt(badge.textContent) - 1;
+                        if (count > 0) {
+                            badge.textContent = count;
+                        } else {
+                            badge.remove();
+                        }
+                        // Update page title
+                        updatePageTitle(count);
+                    }
+                }
+            } catch (error) {
+                console.error('Error marking notification as read:', error);
             }
         }
     </script>
