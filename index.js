@@ -29,7 +29,7 @@ const config = {
         {
             id: 'paris-osaka',
             departureCity: 'Paris',
-            destinationCity: 'Osaka',
+            destinationCity: 'ITM',
             departureDate: '07-12-2025',
             returnDate: '07-20-2025',
             priceThreshold: 700
@@ -205,10 +205,7 @@ async function checkFlightPrice(flightConfig, dates, retryCount = 0) {
         const priceText = await firstPrice.evaluate(el => el.textContent);
         const price = parseInt(priceText.replace(/[^0-9]/g, ''));
 
-        // Take screenshot after getting the price
-        const screenshot = await page.screenshot({ encoding: 'binary' });
-
-        return { price, screenshot };
+        return { price };
     } catch (error) {
         console.error(chalk.red(`Error checking flight price (attempt ${retryCount + 1}/${MAX_RETRIES + 1}):`, error.message));
         
@@ -238,7 +235,7 @@ async function checkAndNotifyFlight(flightConfig) {
         const results = [];
 
         // Process date combinations in parallel with a concurrency limit
-        const DATE_CONCURRENCY_LIMIT = 5; // Limit concurrent date checks per flight config
+        const DATE_CONCURRENCY_LIMIT = 1; // Limit concurrent date checks per flight config
         
         for (let i = 0; i < dateCombinations.length; i += DATE_CONCURRENCY_LIMIT) {
             const dateBatch = dateCombinations.slice(i, i + DATE_CONCURRENCY_LIMIT);
@@ -249,10 +246,10 @@ async function checkAndNotifyFlight(flightConfig) {
                     
                     if (!result) return null;
 
-                    const { price, screenshot } = result;
+                    const { price } = result;
                     
                     // Update price history in database with unique ID for this date combination
-                    await savePrice(`${flightConfig.id}-${dates.departureDate}-${dates.returnDate}`, price, screenshot);
+                    await savePrice(`${flightConfig.id}-${dates.departureDate}-${dates.returnDate}`, price);
                     
                     // Log the result
                     console.log(chalk.white(`\nFlight price for ${flightConfig.departureCity} to ${flightConfig.destinationCity}:`));
