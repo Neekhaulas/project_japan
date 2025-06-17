@@ -4,8 +4,9 @@ import { dirname, join } from 'path';
 import ejs from 'ejs';
 import { getPriceHistory, getUnreadNotifications, markNotificationAsRead, markAllNotificationsAsRead } from './db.js';
 import { initializeDatabase, savePrice, saveNotification } from './db.js';
-import { checkFlightPrice } from './index.js';
+import { checkFlightPrice } from './flightChecker.js';
 import { config } from './config.js';
+import flightQueue from './queue.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -113,26 +114,16 @@ app.post('/api/recheck/:routeId', async (req, res) => {
         const departureDate = dates.slice(0, 3).join('-');
         const returnDate = dates.slice(3).join('-');
 
-        // Check the flight price
-        const result = await checkFlightPrice(flightConfig, { departureDate, returnDate });
-        
-        if (!result) {
-            return res.status(500).json({ error: 'Failed to check flight price' });
-        }
+        // Add to queue instead of checking immediately
+        flightQueue.addToQueue({
+            ...flightConfig,
+            dates: { departureDate, returnDate }
+        });
 
-        // Save the new price
-        await savePrice(routeId, result.price);
-
-        // Check if price is below threshold and create notification if needed
-        if (result.price < flightConfig.priceThreshold) {
-            const message = `🚨 Price Alert! Flight from ${flightConfig.departureCity} to ${flightConfig.destinationCity} (${departureDate} - ${returnDate}) is now ${result.price}€ (below threshold of ${flightConfig.priceThreshold}€)`;
-            await saveNotification(routeId, result.price, flightConfig.priceThreshold, message);
-        }
-
-        res.json({ success: true, price: result.price });
+        res.json({ success: true, status: 'queued' });
     } catch (error) {
-        console.error('Error rechecking flight:', error);
-        res.status(500).json({ error: 'Error rechecking flight' });
+        console.error('Error queueing flight check:', error);
+        res.status(500).json({ error: 'Error queueing flight check' });
     }
 });
 

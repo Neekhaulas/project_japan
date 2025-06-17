@@ -479,43 +479,30 @@
                 
                 // Disable button and show loading state
                 button.disabled = true;
-                button.innerHTML = `
-                    <svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Checking...
-                `;
+                button.innerHTML = '<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Queuing...';
 
                 const response = await fetch(`/api/recheck/${routeId}`, {
                     method: 'POST'
                 });
 
                 if (!response.ok) {
-                    throw new Error('Failed to recheck flight');
+                    throw new Error('Failed to queue flight check');
                 }
 
-                // Show success message
-                button.innerHTML = `
-                    <svg class="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Checked
-                `;
+                const data = await response.json();
 
-                // Reload the page after a short delay to show updated data
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
+                if (data.status === 'queued') {
+                    // Show queued message
+                    button.innerHTML = '<svg class="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Queued';
 
+                    // Reload the page after a short delay to show updated data
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                }
             } catch (error) {
-                console.error('Error rechecking flight:', error);
-                button.innerHTML = `
-                    <svg class="w-5 h-5 mr-2 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    Failed
-                `;
+                console.error('Error queueing flight check:', error);
+                button.innerHTML = '<svg class="w-5 h-5 mr-2 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>Failed';
                 
                 // Reset button after 2 seconds
                 setTimeout(() => {
