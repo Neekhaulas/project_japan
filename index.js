@@ -145,7 +145,7 @@ async function checkFlightPrice(flightConfig, dates, retryCount = 0) {
     
     try {
         // Navigate to Google Flights
-        await page.goto('https://www.google.com/travel/flights?gl=US&hl=en-US');
+        await page.goto('https://www.google.com/travel/flights?gl=US&hl=en-US&curr=EUR');
         await page.setViewport({ width: 1400, height: 2500 });
 
         // Handle cookie consent
