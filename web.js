@@ -1,8 +1,11 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import ejs from 'ejs';
 import { getPriceHistory, getUnreadNotifications, markNotificationAsRead, markAllNotificationsAsRead } from './db.js';
-import { initializeDatabase } from './db.js';
+import { initializeDatabase, savePrice, saveNotification } from './db.js';
+import { checkFlightPrice } from './index.js';
+import { config } from './config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -88,6 +91,48 @@ app.post('/api/notifications/clear-all', async (req, res) => {
     } catch (error) {
         console.error('Error clearing all notifications:', error);
         res.status(500).json({ error: 'Error clearing all notifications' });
+    }
+});
+
+// API endpoint for rechecking a specific flight
+app.post('/api/recheck/:routeId', async (req, res) => {
+    try {
+        const routeId = req.params.routeId;
+        const [departureCity, destinationCity, ...dates] = routeId.split('-');
+        
+        // Find the matching flight config
+        const flightConfig = config.flightConfigs.find(config => 
+            config.id === `${departureCity}-${destinationCity}`
+        );
+
+        if (!flightConfig) {
+            return res.status(404).json({ error: 'Flight configuration not found' });
+        }
+
+        // Extract dates from routeId
+        const departureDate = dates.slice(0, 3).join('-');
+        const returnDate = dates.slice(3).join('-');
+
+        // Check the flight price
+        const result = await checkFlightPrice(flightConfig, { departureDate, returnDate });
+        
+        if (!result) {
+            return res.status(500).json({ error: 'Failed to check flight price' });
+        }
+
+        // Save the new price
+        await savePrice(routeId, result.price);
+
+        // Check if price is below threshold and create notification if needed
+        if (result.price < flightConfig.priceThreshold) {
+            const message = `🚨 Price Alert! Flight from ${flightConfig.departureCity} to ${flightConfig.destinationCity} (${departureDate} - ${returnDate}) is now ${result.price}€ (below threshold of ${flightConfig.priceThreshold}€)`;
+            await saveNotification(routeId, result.price, flightConfig.priceThreshold, message);
+        }
+
+        res.json({ success: true, price: result.price });
+    } catch (error) {
+        console.error('Error rechecking flight:', error);
+        res.status(500).json({ error: 'Error rechecking flight' });
     }
 });
 

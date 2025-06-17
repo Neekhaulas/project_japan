@@ -9,6 +9,7 @@ import { table } from 'table';
 import { savePrice, getLatestPrice, getPriceHistory, saveNotification } from './db.js';
 import dotenv from 'dotenv';
 import { addDays, format, parse } from 'date-fns';
+import { config } from './config.js';
 
 // Load environment variables
 dotenv.config();
@@ -21,45 +22,6 @@ const logsDir = path.join(__dirname, 'logs');
 if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir);
 }
-
-// Configuration
-const config = {
-    checkInterval: (process.env.CHECK_INTERVAL || 60) * 60 * 1000, // Convert minutes to milliseconds
-    flightConfigs: [
-        {
-            id: 'paris-osaka',
-            departureCity: 'Paris',
-            destinationCity: 'ITM',
-            departureDate: '07-12-2025',
-            returnDate: '07-20-2025',
-            priceThreshold: 700
-        },
-        {
-            id: 'paris-tokyo',
-            departureCity: 'Paris',
-            destinationCity: 'Tokyo',
-            departureDate: '07-12-2025',
-            returnDate: '07-20-2025',
-            priceThreshold: 700
-        },
-        {
-            id: 'paris-kyoto',
-            departureCity: 'Paris',
-            destinationCity: 'Kyoto',
-            departureDate: '07-12-2025',
-            returnDate: '07-20-2025',
-            priceThreshold: 700
-        },
-        {
-            id: 'paris-fukuoka',
-            departureCity: 'Paris',
-            destinationCity: 'Fukuoka',
-            departureDate: '07-12-2025',
-            returnDate: '07-20-2025',
-            priceThreshold: 700
-        }
-    ]
-};
 
 // Log the configured interval
 console.log(chalk.blue(`Check interval set to ${process.env.CHECK_INTERVAL || 60} minutes`));
@@ -226,6 +188,9 @@ async function checkFlightPrice(flightConfig, dates, retryCount = 0) {
         await browser.close();
     }
 }
+
+// Export the function
+export { checkFlightPrice };
 
 async function checkAndNotifyFlight(flightConfig) {
     try {
