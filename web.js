@@ -7,6 +7,8 @@ import { initializeDatabase, savePrice, saveNotification } from './db.js';
 import { checkFlightPrice } from './flightChecker.js';
 import { config } from './config.js';
 import flightQueue from './queue.js';
+import session from 'express-session';
+import { sessionConfig, requireAuth, handleLogin, handleRegister, handleLogout } from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -18,11 +20,35 @@ const port = process.env.PORT || 3000;
 app.set('view engine', 'ejs');
 app.set('views', join(__dirname, 'views'));
 
-// Serve static files
+// Middleware
 app.use(express.static(join(__dirname, 'public')));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(session(sessionConfig));
 
-// Routes
-app.get('/', async (req, res) => {
+// Authentication routes
+app.get('/login', (req, res) => {
+    if (req.session.userId) {
+        return res.redirect('/');
+    }
+    res.render('login', { registered: req.query.registered === 'true' });
+});
+
+app.post('/login', handleLogin);
+
+app.get('/register', (req, res) => {
+    if (req.session.userId) {
+        return res.redirect('/');
+    }
+    res.render('register');
+});
+
+app.post('/register', handleRegister);
+
+app.get('/logout', handleLogout);
+
+// Protected routes
+app.get('/', requireAuth, async (req, res) => {
     try {
         // Query the database for all unique route_ids
         const db = await initializeDatabase();
@@ -62,8 +88,8 @@ app.get('/', async (req, res) => {
     }
 });
 
-// API endpoint for getting price history
-app.get('/api/prices/:routeId', async (req, res) => {
+// Protected API endpoints
+app.get('/api/prices/:routeId', requireAuth, async (req, res) => {
     try {
         const history = await getPriceHistory(req.params.routeId);
         res.json(history);
@@ -73,8 +99,7 @@ app.get('/api/prices/:routeId', async (req, res) => {
     }
 });
 
-// API endpoint for marking notification as read
-app.post('/api/notifications/:id/read', async (req, res) => {
+app.post('/api/notifications/:id/read', requireAuth, async (req, res) => {
     try {
         await markNotificationAsRead(req.params.id);
         res.json({ success: true });
@@ -84,8 +109,7 @@ app.post('/api/notifications/:id/read', async (req, res) => {
     }
 });
 
-// API endpoint for marking all notifications as read
-app.post('/api/notifications/clear-all', async (req, res) => {
+app.post('/api/notifications/clear-all', requireAuth, async (req, res) => {
     try {
         await markAllNotificationsAsRead();
         res.json({ success: true });
@@ -95,8 +119,7 @@ app.post('/api/notifications/clear-all', async (req, res) => {
     }
 });
 
-// API endpoint for rechecking a specific flight
-app.post('/api/recheck/:routeId', async (req, res) => {
+app.post('/api/recheck/:routeId', requireAuth, async (req, res) => {
     try {
         const routeId = req.params.routeId;
         const [departureCity, destinationCity, ...dates] = routeId.split('-');

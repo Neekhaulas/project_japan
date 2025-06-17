@@ -3,6 +3,7 @@ import { open } from 'sqlite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import bcrypt from 'bcrypt';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,6 +14,16 @@ async function initializeDatabase() {
         filename: path.join(__dirname, 'logs', 'price-history.db'),
         driver: sqlite3.Database
     });
+
+    // Create users table with new schema
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
 
     // Create price_history table if it doesn't exist
     await db.exec(`
@@ -110,6 +121,66 @@ async function markAllNotificationsAsRead() {
     await db.close();
 }
 
+// User authentication functions
+async function createUser(email, password) {
+    const db = await initializeDatabase();
+    const passwordHash = await bcrypt.hash(password, 10);
+    
+    try {
+        await db.run(
+            'INSERT INTO users (email, password_hash) VALUES (?, ?)',
+            [email, passwordHash]
+        );
+        return true;
+    } catch (error) {
+        if (error.code === 'SQLITE_CONSTRAINT') {
+            return false; // Email already exists
+        }
+        throw error;
+    } finally {
+        await db.close();
+    }
+}
+
+async function authenticateUser(email, password) {
+    const db = await initializeDatabase();
+    try {
+        const user = await db.get(
+            'SELECT * FROM users WHERE email = ?',
+            [email]
+        );
+        
+        if (!user) {
+            return null;
+        }
+
+        const passwordMatch = await bcrypt.compare(password, user.password_hash);
+        if (!passwordMatch) {
+            return null;
+        }
+
+        return {
+            id: user.id,
+            email: user.email
+        };
+    } finally {
+        await db.close();
+    }
+}
+
+async function getUserById(userId) {
+    const db = await initializeDatabase();
+    try {
+        const user = await db.get(
+            'SELECT id, email, created_at FROM users WHERE id = ?',
+            [userId]
+        );
+        return user;
+    } finally {
+        await db.close();
+    }
+}
+
 export { 
     savePrice, 
     getLatestPrice, 
@@ -118,5 +189,8 @@ export {
     saveNotification,
     getUnreadNotifications,
     markNotificationAsRead,
-    markAllNotificationsAsRead
+    markAllNotificationsAsRead,
+    createUser,
+    authenticateUser,
+    getUserById
 }; 
